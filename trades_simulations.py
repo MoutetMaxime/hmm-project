@@ -18,7 +18,8 @@ types = {
     # "D2D Trade": 5,
 }
 
-price_walk = generate_random_walk_price(50, 0.05, 100)
+N = 100
+price_walk = generate_random_walk_price(50, 0.05, N)
 
 
 def generate_buy_sell_prices(price_walk, bid_ask_spreads):
@@ -64,7 +65,7 @@ def generate_trades(buy_sell_prices, types, prob_trade=0.2):
     return pd.DataFrame(trades, columns=["time", "type", "price"])
 
 
-bid_ask_spreads = generate_bid_ask_prices(100)
+bid_ask_spreads = generate_bid_ask_prices(N)
 
 buy_sell_prices = generate_buy_sell_prices(price_walk, bid_ask_spreads)
 trades = generate_trades(buy_sell_prices, types)
@@ -111,4 +112,4 @@ plt.plot(buy_sell_prices["time"], buy_sell_prices["price"], label="Price")
 
 plt.legend()
 print(buy_sell_prices.head())
-plt.show()
+plt.savefig("trades.png")
