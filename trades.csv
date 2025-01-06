@@ -1,4 +1,4 @@
-time,type,price,bond_index
+time,type,YtB,bond_index
 2,2,0.7398698490339359,2
 3,3,0.7203819010380826,1
 5,3,0.7205959500860741,1
