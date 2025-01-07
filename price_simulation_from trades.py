@@ -11,8 +11,8 @@ price_0 = trades.loc[0, "YtB"]
 Phi = 1
 K = 5  # Number of particles
 d = 2  # Number of bonds
-A = 1000 * np.eye(d)
-V = np.eye(d)
+A = 10 * np.eye(d)
+V = 0.01 * np.eye(d)
 sigmas_i = np.array([0.5 * 1e-4, 0.62 * 1e-4])
 sigmas_eps = np.array([5e-2 * 0.79e-4 * 2, 5e-2 * 0.73e-4 * 2])
 cov_matrix = np.array(
@@ -23,8 +23,17 @@ cov_matrix = np.array(
 )  # Covariance matrix for the bonds
 
 
-def sample_K_y0(d, loc=0.7, scale=0.6 * 1e-4, K=1000):
-    return np.random.normal(loc, scale, size=(d, K))
+def sample_K_y0(
+    d,
+    loc=[0.72, 0.74],
+    scale=np.array([[0.6 * 1e-4, 0.843], [0.5 * 1e-4, 0.843]]),
+    K=1000,
+):
+    y = np.zeros((d, K))
+    for i in range(d):
+        y[i] = np.random.normal(loc[i], scale[i, i], size=(1, K))
+
+    return y
 
 
 def sample_K_x0(d, loc=-9, scale=0.83, K=1000):
@@ -66,8 +75,13 @@ def draw_y_tilde(
         a = (
             ytb + psi_hat[bond_index] - y_prev[bond_index]
         ) / scale  # Normalize the lower bound
+
         y_tilde = truncnorm.rvs(
-            a=a, b=np.inf, loc=y_prev[bond_index], scale=scale, size=K
+            a=a,
+            b=np.inf,
+            loc=y_prev[bond_index],
+            scale=scale,
+            size=K,
         )
     elif trade_type == 4:
         # Left-sided truncated normal distribution
@@ -130,23 +144,23 @@ def compute_weights(
     )
 
     if trade_type == 1:  # Done(buy) - D2C buy
-        weights = norm.pdf(
+        weights = norm.logpdf(
             (ytb + phi_hat[bond_index] - y_hats[bond_index]) / denominator
         )
     elif trade_type == 2:  # Done(sell) - D2C sell
-        weights = norm.pdf(
+        weights = norm.logpdf(
             (ytb - phi_hat[bond_index] - y_hats[bond_index]) / denominator
         )
     elif trade_type == 3:  # Traded Away (buy)
-        weights = norm.cdf(
+        weights = norm.logcdf(
             (-ytb - phi_hat[bond_index] - y_hats[bond_index]) / denominator
         )
     elif trade_type == 4:  # Traded Away (sell)
-        weights = norm.cdf(
+        weights = norm.logcdf(
             (-ytb + phi_hat[bond_index] - y_hats[bond_index]) / denominator
         )
     elif trade_type == 5:  # Traded Away (two-sided)
-        weights = norm.cdf(
+        weights = norm.logcdf(
             (-ytb + alpha_i * phi_hat[bond_index] - y_hats[bond_index]) / denominator
         ) - norm.cdf(
             (-ytb - alpha_i * phi_hat[bond_index] - y_hats[bond_index]) / denominator
@@ -155,7 +169,8 @@ def compute_weights(
     else:
         raise ValueError(f"Unknown trade type: {trade_type}")
 
-    # Normalize weights
+    weights = np.exp(weights - np.max(weights))
+
     return weights / np.sum(weights)
 
 
@@ -166,8 +181,8 @@ def draw_other_bonds(y_prev, y, bond_index, cov_matrix, tau_diff, K=1000):
 
         mu = (
             np.delete(y_prev, bond_index, axis=0)[:, k]
-            + (y - y_prev[bond_index])[k]
-            * scale[bond_index, bond_index]
+            + (y[k] - y_prev[bond_index])[k]
+            * scale[bond_index]
             / cov_matrix[bond_index, bond_index]
         )
 
@@ -177,20 +192,21 @@ def draw_other_bonds(y_prev, y, bond_index, cov_matrix, tau_diff, K=1000):
 
 
 x_estimates = np.array([sample_K_x0(d, K=K)])  # (m, d, K) = (1, d, K)
-y_estimates = np.array([sample_K_y0(d, loc=price_0, K=K)])  # (m, d, K) = (1, d, K)
-result = np.zeros((len(trades), d, K))
-result[0] = y_estimates[-1]
+y_estimates = np.array([sample_K_y0(d, loc=[0.72, 0.74], K=K)])  # (m, d, K) = (1, d, K)
+result = [y_estimates[-1]]
 print("x_estimates", x_estimates.shape)
 print("y_estimates", y_estimates.shape)
 
-for time_index in range(1, len(trades)):
+for time_index in range(1, 30):
     ### Extracting the relevant information from the trades dataframe
-    bond_index = trades.loc[time_index, "bond_index"]
+    bond_index = trades.loc[time_index, "bond_index"] - 1
     ytb = trades.loc[time_index, "YtB"]
     prev_ytb = trades.loc[time_index - 1, "YtB"]
     trade_type = trades.loc[time_index, "type"]
     tau_diff = trades.loc[time_index, "time"] - trades.loc[time_index - 1, "time"]
     print("Type of trade", trade_type)
+    print("Bond index", bond_index)
+    print("time", time_index)
 
     # ------------ Step 1: Drawing half bid-ask spreads ------------ #
     print("STEP 1")
@@ -207,23 +223,17 @@ for time_index in range(1, len(trades)):
     # ).reshape(
     #     -1, d, K
     # )  # (1, d, K)
-    x_hat = np.array(
-        sample_K_x0(d, K=K)
-    ).reshape(1, d, K)  # (1, d, K)
+    x_hat = np.array(sample_K_x0(d, K=K)).reshape(1, d, K)  # (1, d, K)
+
     def sample_K_x0(d, loc=-9, scale=0.83, K=1000):
         return np.random.normal(loc, scale, size=(d, K))
-    
+
     phi_hat = Phi * np.exp(x_hat[-1])  # (d, K)
     print("phi_hat", phi_hat.shape)
     print("x_hat", x_hat.shape)
     print("-------------------")
     # ------------ Step 2: Computing weights ------------ #
     print("STEP 2")
-    print("phi_hat", phi_hat)
-    print("ytb", ytb)
-    print("previous ytb", prev_ytb)
-    print("cov_matrix", cov_matrix)
-    print("sigmas_eps", sigmas_eps)
     weights = compute_weights(
         phi_hat,
         ytb,
@@ -268,6 +278,7 @@ for time_index in range(1, len(trades)):
         tau_diff,
         cov_matrix,
         sigmas_eps,
+        K=K,
     )  # (K,)
     print("y_tilde", y_tilde.shape)
     print("-------------------")
@@ -284,7 +295,7 @@ for time_index in range(1, len(trades)):
         loc=loc,
         scale=scale,
     )  # (K,)
-    print("next_y", next_y.shape)
+    print("next_y", next_y)
     print("-------------------")
 
     # ------------ Step 6: Drawing the price y_i' ------------ #
@@ -294,7 +305,7 @@ for time_index in range(1, len(trades)):
         y_other_bonds = draw_other_bonds(
             y_estimates[-1], next_y, bond_index, cov_matrix, tau_diff, K=K
         )
-        print("y_other_bonds", y_other_bonds.shape)
+        print("y_other_bonds", y_other_bonds)
         new_y = np.insert(y_other_bonds, bond_index, next_y, axis=0)
         print("new_y", new_y.shape)
         y_estimates = np.concatenate(
@@ -306,7 +317,7 @@ for time_index in range(1, len(trades)):
     print("y_estimates", y_estimates.shape)
     print("=====================================================")
 
-    result[time_index] = y_estimates[-1]
+    result.append(y_estimates[-1])
 
 
 # Plot the results
@@ -314,23 +325,31 @@ import matplotlib.pyplot as plt
 
 # Plot trades
 plt.figure(figsize=(12, 6))
-plt.plot(trades["time"], trades["price"], "o", label="Trades")
-
-# Plot estimated prices
-plt.plot(trades["time"], result.mean(axis=1), label="Estimated price")
-
-# Plot 95% interval
-lower_bound = np.percentile(result, 2.5, axis=1)
-upper_bound = np.percentile(result, 97.5, axis=1)
-plt.fill_between(
-    trades["time"],
-    lower_bound,
-    upper_bound,
-    color="blue",
-    alpha=0.2,
-    label="95% Confidence Interval",
-)
 
 
-plt.legend()
+plt.subplot(211)
+trades = trades.loc[:29]
+result = np.array(result)
+bond1 = trades[trades["bond_index"] == 1]
+time1 = trades[trades["bond_index"] == 1]["time"]
+bond2 = trades[trades["bond_index"] == 2]
+time2 = trades[trades["bond_index"] == 2]["time"]
+
+print("results", result.shape)
+print("bond1", bond1)
+print("bond2", bond2)
+print(trades)
+
+result1 = result[:, 0, :].mean(axis=1)
+result2 = result[:, 1, :].mean(axis=1)
+
+print("result1", result1)
+print("result2", result2)
+
+plt.plot(trades["time"], result1, label="Bond 1")
+plt.plot(time1, bond1["YtB"], "o", label="Bond 1 trades")
+
+plt.subplot(212)
+plt.plot(trades["time"], result2, label="Bond 2")
+plt.plot(time2, bond2["YtB"], "o", label="Bond 2 trades")
 plt.show()
