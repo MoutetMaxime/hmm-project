@@ -43,7 +43,7 @@ The main results include two graphs illustrating the model's performance:
    python price_simulation_from trades.py
    ```
 
-## Collaborateurs
+## Colaborators
 This project was done with:
 - [Etienne Selles](https://github.com/etienne-sls)
 - [Matthieu Oleknovitch](https://github.com/Matt-Olek)
