@@ -8,17 +8,17 @@ trades = pd.read_csv(path)
 
 price_0 = trades.loc[0, "YtB"]
 
-Phi = 1
-K = 5  # Number of particles
+Phi = 30
+K = 1000  # Number of particles
 d = 2  # Number of bonds
-A = 10 * np.eye(d)
+A = 1000 * np.eye(d)
 V = 0.01 * np.eye(d)
-sigmas_i = np.array([0.5 * 1e-4, 0.62 * 1e-4])
+sigmas_i = np.array([5 * 1e-3, 6 * 1e-3])
 sigmas_eps = np.array([5e-2 * 0.79e-4 * 2, 5e-2 * 0.73e-4 * 2])
 cov_matrix = np.array(
     [
-        [sigmas_i[0] ** 2, sigmas_i[0] * sigmas_i[1] * 0.843],
-        [sigmas_i[0] * sigmas_i[1] * 0.843, sigmas_i[1] ** 2],
+        [sigmas_i[0] ** 2, sigmas_i[0] * sigmas_i[1] * 0.5],
+        [sigmas_i[0] * sigmas_i[1] * 0.5, sigmas_i[1] ** 2],
     ]
 )  # Covariance matrix for the bonds
 
@@ -26,7 +26,7 @@ cov_matrix = np.array(
 def sample_K_y0(
     d,
     loc=[0.72, 0.74],
-    scale=np.array([[0.6 * 1e-4, 0.843], [0.5 * 1e-4, 0.843]]),
+    scale=cov_matrix,
     K=1000,
 ):
     y = np.zeros((d, K))
@@ -36,8 +36,11 @@ def sample_K_y0(
     return y
 
 
-def sample_K_x0(d, loc=-9, scale=0.83, K=1000):
-    return np.random.normal(loc, scale, size=(d, K))
+def sample_K_x0(d, loc=[-9.79, -9.87], scale=0.83, K=1000):
+    x = np.zeros((d, K))
+    for i in range(d):
+        x[i] = np.random.normal(loc[i], scale, size=(1, K))
+    return x
 
 
 def gamma(tau, A, V):
@@ -187,7 +190,7 @@ def draw_other_bonds(y_prev, y, bond_index, cov_matrix, tau_diff, K=1000):
         )
 
         scale = np.delete(scale, bond_index, axis=0)
-        y_other_bonds[:, k] = np.random.normal(mu, scale * tau_diff)
+        y_other_bonds[:, k] = np.random.normal(mu, np.sqrt(scale * tau_diff))
     return y_other_bonds
 
 
@@ -210,19 +213,6 @@ for time_index in range(1, 30):
 
     # ------------ Step 1: Drawing half bid-ask spreads ------------ #
     print("STEP 1")
-    # Les xt sont iid gaussiens, donc x_hat peut être tirés selon une N(-9,0.83)
-    # Pas d'effet de tau m+1 - tau m car indep des xt
-    # x_hat = np.array(
-    #     [
-    #         np.random.multivariate_normal(
-    #             np.dot(np.exp(-A * tau_diff), x_estimates[-1, :, k]),
-    #             gamma(tau_diff, A, V),
-    #         )
-    #         for k in range(K)
-    #     ]
-    # ).reshape(
-    #     -1, d, K
-    # )  # (1, d, K)
     x_hat = np.array(sample_K_x0(d, K=K)).reshape(1, d, K)  # (1, d, K)
 
     def sample_K_x0(d, loc=-9, scale=0.83, K=1000):
@@ -320,14 +310,9 @@ for time_index in range(1, 30):
     result.append(y_estimates[-1])
 
 
-# Plot the results
+# Plot
 import matplotlib.pyplot as plt
 
-# Plot trades
-plt.figure(figsize=(12, 6))
-
-
-plt.subplot(211)
 trades = trades.loc[:29]
 result = np.array(result)
 bond1 = trades[trades["bond_index"] == 1]
@@ -335,21 +320,134 @@ time1 = trades[trades["bond_index"] == 1]["time"]
 bond2 = trades[trades["bond_index"] == 2]
 time2 = trades[trades["bond_index"] == 2]["time"]
 
-print("results", result.shape)
-print("bond1", bond1)
-print("bond2", bond2)
-print(trades)
+# Calcul des moyennes et des quantiles sur l'axe des particules (axis=2)
+mean1 = result[:, 0, :].mean(axis=1)  # Moyenne pour Bond 1
+quantiles1 = np.percentile(
+    result[:, 0, :], [1, 5, 10, 25, 75, 90, 95, 99], axis=1
+)  # Quantiles pour Bond 1
 
-result1 = result[:, 0, :].mean(axis=1)
-result2 = result[:, 1, :].mean(axis=1)
+mean2 = result[:, 1, :].mean(axis=1)  # Moyenne pour Bond 2
+quantiles2 = np.percentile(
+    result[:, 1, :], [1, 5, 10, 25, 75, 90, 95, 99], axis=1
+)  # Quantiles pour Bond 2
 
-print("result1", result1)
-print("result2", result2)
+plt.figure(figsize=(12, 8))
 
-plt.plot(trades["time"], result1, label="Bond 1")
-plt.plot(time1, bond1["YtB"], "o", label="Bond 1 trades")
+time_limit = trades["time"].min() + 0.75 * (trades["time"].max() - trades["time"].min())
 
+# Bond 1
+plt.subplot(211)
+plt.plot(
+    trades["time"], mean1, "--", label="Bond 1 Mean", color="black"
+)  # Ligne pointillée noire pour la moyenne
+plt.fill_between(
+    trades["time"],
+    quantiles1[0, :],
+    quantiles1[-1, :],
+    color="blue",
+    alpha=0.1,
+)
+plt.fill_between(
+    trades["time"],
+    quantiles1[1, :],
+    quantiles1[-2, :],
+    color="blue",
+    alpha=0.2,
+)
+plt.fill_between(
+    trades["time"],
+    quantiles1[2, :],
+    quantiles1[-3, :],
+    color="blue",
+    alpha=0.3,
+)
+plt.fill_between(
+    trades["time"],
+    quantiles1[3, :],
+    quantiles1[-4, :],
+    color="blue",
+    alpha=0.4,
+)
+
+# Affichage des trades selon leur type
+for trade_type, color, marker in [
+    (1, "red", "o"),
+    (2, "green", "o"),
+    (3, "red", "+"),
+    (4, "green", "+"),
+    (5, "black", "o"),
+]:
+    trades_type = bond1[bond1["type"] == trade_type]
+    plt.plot(
+        trades_type["time"],
+        trades_type["YtB"],
+        marker,
+        color=color,
+        label=f"Type {trade_type}",
+    )
+
+plt.legend()
+plt.title("Bond 1 YtB and Confidence Intervals")
+plt.xlabel("Time")
+plt.ylabel("YtB")
+plt.xlim(trades["time"].min(), time_limit)
+
+# Bond 2
 plt.subplot(212)
-plt.plot(trades["time"], result2, label="Bond 2")
-plt.plot(time2, bond2["YtB"], "o", label="Bond 2 trades")
+plt.plot(
+    trades["time"], mean2, "--", label="Bond 2 Mean", color="black"
+)  # Ligne pointillée noire pour la moyenne
+plt.fill_between(
+    trades["time"],
+    quantiles2[0, :],
+    quantiles2[-1, :],
+    color="red",
+    alpha=0.1,
+)
+plt.fill_between(
+    trades["time"],
+    quantiles2[1, :],
+    quantiles2[-2, :],
+    color="red",
+    alpha=0.2,
+)
+plt.fill_between(
+    trades["time"],
+    quantiles2[2, :],
+    quantiles2[-3, :],
+    color="red",
+    alpha=0.3,
+)
+plt.fill_between(
+    trades["time"],
+    quantiles2[3, :],
+    quantiles2[-4, :],
+    color="red",
+    alpha=0.4,
+)
+
+# Affichage des trades selon leur type
+for trade_type, color, marker in [
+    (1, "green", "o"),
+    (2, "red", "o"),
+    (3, "green", "+"),
+    (4, "red", "+"),
+    (5, "black", "o"),
+]:
+    trades_type = bond2[bond2["type"] == trade_type]
+    plt.plot(
+        trades_type["time"],
+        trades_type["YtB"],
+        marker,
+        color=color,
+        label=f"Type {trade_type}",
+    )
+
+plt.legend()
+plt.title("Bond 2 YtB and Confidence Intervals")
+plt.xlabel("Time")
+plt.ylabel("YtB")
+plt.xlim(trades["time"].min(), time_limit)
+
+plt.tight_layout()
 plt.show()

@@ -17,11 +17,12 @@ mu = -9.79
 mu2 = -9.87
 mus_bid_ask = [mu, mu2]
 
-sigmas_epsilons = [5e-2*0.79e-4*2, 5e-2*0.73e-4*2]
+sigmas_epsilons = [5e-2 * 0.79e-4 * 2, 5e-2 * 0.73e-4 * 2]
+
 
 def generate_correlated_random_walks(initial_prices, volatilities, correlation, steps):
     """Generate two correlated random walk price series
-    
+
     Args:
         initial_prices: List of initial prices for both bonds
         volatilities: List of volatilities for both bonds
@@ -29,27 +30,26 @@ def generate_correlated_random_walks(initial_prices, volatilities, correlation, 
         steps: Number of time steps
     """
     # Create correlation matrix
-    corr_matrix = np.array([[1, correlation], 
-                           [correlation, 1]])
-    
+    corr_matrix = np.array([[1, correlation], [correlation, 1]])
+
     # Generate correlated normal random variables
     mean = [0, 0]
     random_walks = np.random.multivariate_normal(mean, corr_matrix, steps)
-    
+
     # Initialize price series
     prices_1 = [initial_prices[0]]
     prices_2 = [initial_prices[1]]
-    
+
     # Generate correlated price walks
     for i in range(steps):
-        prices_1.append(prices_1[-1] * (1 + volatilities[0] * random_walks[i,0]))
-        prices_2.append(prices_2[-1] * (1 + volatilities[1] * random_walks[i,1]))
-        
+        prices_1.append(prices_1[-1] * (1 + volatilities[0] * random_walks[i, 0]))
+        prices_2.append(prices_2[-1] * (1 + volatilities[1] * random_walks[i, 1]))
+
     return prices_1, prices_2
 
 
 initial_prices = [0.72, 0.74]  # Initial prices for both bonds
-volatilities = [0.5e-4, 0.62e-4]  # Different volatilities for each bond
+volatilities = [5e-3, 6e-3]  # Different volatilities for each bond
 correlation = 0.843  # Correlation coefficient between bonds
 
 price_walk_1, price_walk_2 = generate_correlated_random_walks(
@@ -73,10 +73,12 @@ def generate_buy_sell_prices(price_walk, bid_ask_spreads, sigma=sigma):
     return buy_sell_prices
 
 
-def generate_bid_ask_prices(steps, initial_bid_ask_spread=0, sigma=sigma_bid_ask, mu=mu):
+def generate_bid_ask_prices(
+    steps, initial_bid_ask_spread=0, sigma=sigma_bid_ask, mu=mu
+):
     spreads = [initial_bid_ask_spread]
     for i in range(1, steps):
-        spread = np.exp(np.random.normal(mu, sigma))
+        spread = 50 * np.exp(np.random.normal(mu, sigma))
         spreads.append(spread)
 
     return pd.DataFrame(spreads)
@@ -91,9 +93,11 @@ def generate_trades(buy_sell_prices_1, buy_sell_prices_2, types, prob_trade=0.6)
             # Randomly choose which bond trades
             bond_index = np.random.choice([1, 2])
             trade_type = np.random.choice(list(types.values()))
-            
+
             # Get price based on which bond was selected
-            buy_sell_prices = buy_sell_prices_1 if bond_index == 1 else buy_sell_prices_2
+            buy_sell_prices = (
+                buy_sell_prices_1 if bond_index == 1 else buy_sell_prices_2
+            )
             price = (
                 buy_sell_prices.loc[i, "buy_price"]
                 if trade_type == 1 or trade_type == 3
@@ -103,7 +107,7 @@ def generate_trades(buy_sell_prices_1, buy_sell_prices_2, types, prob_trade=0.6)
         else:
             trades.append((i, 0, 0, 0))  # No trade
 
-    return pd.DataFrame(trades, columns=["time", "type", "price", "bond_index"])
+    return pd.DataFrame(trades, columns=["time", "type", "YtB", "bond_index"])
 
 
 # Generate data for both bonds
@@ -133,23 +137,45 @@ trades_2 = trades[trades["bond_index"] == 2]
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
 
 # Plot Bond 1
-for trades, buy_sell_prices, ax, title in [(trades_1, buy_sell_prices_1, ax1, "Bond 1"),
-                                         (trades_2, buy_sell_prices_2, ax2, "Bond 2")]:
+for trades, buy_sell_prices, ax, title in [
+    (trades_1, buy_sell_prices_1, ax1, "Bond 1"),
+    (trades_2, buy_sell_prices_2, ax2, "Bond 2"),
+]:
     # Plot done trades
     done_trades_buy = trades[trades["type"] == 1]
     done_trades_sell = trades[trades["type"] == 2]
-    ax.scatter(done_trades_buy["time"], done_trades_buy["price"], 
-              color="red", marker="o", label="Done Trades - Buy")
-    ax.scatter(done_trades_sell["time"], done_trades_sell["price"], 
-              color="green", marker="o", label="Done Trades - Sell")
+    ax.scatter(
+        done_trades_buy["time"],
+        done_trades_buy["YtB"],
+        color="red",
+        marker="o",
+        label="Done Trades - Buy",
+    )
+    ax.scatter(
+        done_trades_sell["time"],
+        done_trades_sell["YtB"],
+        color="green",
+        marker="o",
+        label="Done Trades - Sell",
+    )
 
     # Plot traded away trades
     traded_away_buy = trades[trades["type"] == 3]
     traded_away_sell = trades[trades["type"] == 4]
-    ax.scatter(traded_away_buy["time"], traded_away_buy["price"], 
-              color="red", marker="+", label="Traded Away - Buy")
-    ax.scatter(traded_away_sell["time"], traded_away_sell["price"], 
-              color="green", marker="+", label="Traded Away - Sell")
+    ax.scatter(
+        traded_away_buy["time"],
+        traded_away_buy["YtB"],
+        color="red",
+        marker="+",
+        label="Traded Away - Buy",
+    )
+    ax.scatter(
+        traded_away_sell["time"],
+        traded_away_sell["YtB"],
+        color="green",
+        marker="+",
+        label="Traded Away - Sell",
+    )
 
     # Plot price line
     ax.plot(buy_sell_prices["time"], buy_sell_prices["price"], label="Price")
@@ -160,7 +186,7 @@ plt.tight_layout()
 plt.savefig("correlated_trades.png")
 
 # Print correlation between the two price series
-correlation = np.corrcoef(buy_sell_prices_1["price"], buy_sell_prices_2["price"])[0,1]
+correlation = np.corrcoef(buy_sell_prices_1["price"], buy_sell_prices_2["price"])[0, 1]
 print(f"Realized correlation between bonds: {correlation:.3f}")
 print("\nBond 1 prices:")
 print(buy_sell_prices_1.head())
