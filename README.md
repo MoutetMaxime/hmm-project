@@ -3,7 +3,7 @@
 This project was carried out as part of the ENSAE course taught by Nicolas Chopin. It explores the use of Hidden Markov Models (HMMs) and particle filters for mid-price estimation of European corporate bonds. The work is primarily based on the paper:
 
 **Reference**:
-- [*Mid-price estimation for European corporate bonds: a particle filtering approach*](https://doi.org/10.1093/imaiai/iay003)
+- [*Mid-price estimation for European corporate bonds: a particle filtering approach*](https://arxiv.org/abs/1810.05884)
 
 ## Project Structure
 
